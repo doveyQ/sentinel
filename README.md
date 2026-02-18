@@ -1,2 +1,3 @@
-# sentinel
-Basic sysinfo cli-based system monitor
+# Sentinel
+Simple cli-based system monitor using sysinfo for data  
+collection.
