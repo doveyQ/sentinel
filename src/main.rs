@@ -1,63 +1,52 @@
-use std::thread;
-use std::time::Duration;
-use sysinfo::{System, Disks, Networks};
+use std::time::{Duration, Instant};
+
+use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use sysinfo::{Disks, Networks, System};
 
 mod stats;
 mod ui;
 
 use stats::SystemStats;
 
-fn main() {
-    let mut sys: System = System::new_all();
-    let mut disks: Disks = Disks::new_with_refreshed_list();
-    let mut networks: Networks = Networks::new_with_refreshed_list();
+fn main() -> std::io::Result<()> {
+    let mut terminal = ratatui::init();
+
+    let result = run(&mut terminal);
+
+    ratatui::restore();
+    result
+}
+
+fn run(terminal: &mut ratatui::DefaultTerminal) -> std::io::Result<()> {
+    let mut sys = System::new_all();
+    let mut disks = Disks::new_with_refreshed_list();
+    let mut networks = Networks::new_with_refreshed_list();
+
+    let refresh_interval = Duration::from_secs(2);
+    let mut last_refresh = Instant::now() - refresh_interval; // force immediate first draw
+    let mut stats = SystemStats::collect(&mut sys, &mut disks, &mut networks);
 
     loop {
-        // Clear screen
-        print!("\x1B[2J\x1B[1;1H");
-
-        let stats = SystemStats::collect(&mut sys, &mut disks, &mut networks);
-
-        println!("=== System Health Dashboard ===");
-        println!("Hostname:     {}", stats.hostname);
-        println!("Kernel:       {}", stats.kernel);
-        println!("Uptime:       {}", stats.format_uptime());
-        println!("Load Avg:     {:.2}  {:.2}  {:.2}  (1m / 5m / 15m)",
-            stats.load_avg.0, stats.load_avg.1, stats.load_avg.2);
-        println!("CPU Usage:    {:.2}%", stats.cpu_usage);
-        println!("Memory:       {:.2} / {:.2} GB",
-            rd_util::to_gb(stats.memory_used),
-            rd_util::to_gb(stats.memory_total));
-        println!("Swap:         {:.2} / {:.2} GB",
-            rd_util::to_gb(stats.swap_used),
-            rd_util::to_gb(stats.swap_total));
-
-        println!("\nDisks:");
-        for (name, used, total) in &stats.disk_usage {
-            println!("  {:<15} {:.2} / {:.2} GB", name,
-                rd_util::to_gb(*used), rd_util::to_gb(*total));
+        // Refresh stats on interval
+        if last_refresh.elapsed() >= refresh_interval {
+            stats = SystemStats::collect(&mut sys, &mut disks, &mut networks);
+            last_refresh = Instant::now();
         }
 
-        println!("\nNetwork:");
-        for (iface, rx, tx) in &stats.network {
-            println!("  {:<15} RX: {:>10}   TX: {:>10}",
-                iface,
-                SystemStats::format_bytes(*rx),
-                SystemStats::format_bytes(*tx));
-        }
+        // Draw
+        terminal.draw(|frame| ui::draw(frame, &stats))?;
 
-        println!("\nTop Processes:");
-        println!("  {:>7}  {:>6}  {:>8}  {}", "PID", "CPU%", "MEM(MB)", "COMMAND");
-        println!("  {}", "-".repeat(60));
-        for p in &stats.processes {
-            let cmd_display = if p.cmd.len() > 40 {
-                format!("{}…", &p.cmd[..39])
-            } else {
-                p.cmd.clone()
-            };
-            println!("  {:>7}  {:>5.1}%  {:>8.1}  {}", p.pid, p.cpu_usage, p.memory_mb, cmd_display);
+        // Non-blocking event poll (200ms to stay responsive)
+        if event::poll(Duration::from_millis(200))? {
+            if let Event::Key(key) = event::read()? {
+                if key.kind == KeyEventKind::Press {
+                    match key.code {
+                        KeyCode::Char('q') | KeyCode::Char('Q') => return Ok(()),
+                        KeyCode::Esc => return Ok(()),
+                        _ => {}
+                    }
+                }
+            }
         }
-
-        thread::sleep(Duration::from_secs(2));
     }
 }
