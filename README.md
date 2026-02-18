@@ -1,6 +1,13 @@
 # Sentinel
-Simple cli-based system monitor using sysinfo for data  
-collection and ratatui for the user interface. Mainly for learning purposes.
+Simple cli-based system monitor using sysinfo for data collection and ratatui for the user interface.   
+Mainly for learning purposes! 
+
+## Features
+Usual stuff like:
+- System informations
+- Resources
+- Top processes
+- Disks & Network interfaces
 
 ## Installation (using Rust)
 
